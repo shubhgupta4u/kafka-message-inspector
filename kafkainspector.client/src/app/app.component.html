@@ -1,24 +1,265 @@
-﻿<h1 id="tableLabel">Weather forecast</h1>
+<div class="container-fluid d-flex vh-100 flex-column" style="font-family: 'Segoe UI', Arial, sans-serif; background: #f5f5f5; max-height: 100vh;">
 
-<p>This component demonstrates fetching data from the server.</p>
+  <!-- Header -->
+  <header class="py-3 border-bottom bg-white shadow-sm mb-2 text-center flex-shrink-0">
+    <h1 class="fs-2 fw-bold text-primary mb-1">Kafka Message Inspector</h1>
+    <p class="text-muted mb-0">Connect to SSL or Plaintext Kafka brokers and inspect messages in real-time</p>
+  </header>
 
-<p *ngIf="!forecasts"><em>Loading... Please refresh once the ASP.NET backend has started. See <a href="https://aka.ms/jspsintegrationangular">https://aka.ms/jspsintegrationangular</a> for more details.</em></p>
+  <!-- Main Content -->
+  <div class="d-flex flex-column flex-grow-1 g-3">
 
-<table *ngIf="forecasts">
-    <thead>
-        <tr>
-            <th>Date</th>
-            <th>Temp. (C)</th>
-            <th>Temp. (F)</th>
-            <th>Summary</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr *ngFor="let forecast of forecasts">
-            <td>{{ forecast.date }}</td>
-            <td>{{ forecast.temperatureC }}</td>
-            <td>{{ forecast.temperatureF }}</td>
-            <td>{{ forecast.summary }}</td>
-        </tr>
-    </tbody>
-</table>
+    <!-- Broker & Topics Accordion -->
+    <div class="flex-shrink-0 mb-3">
+      <div class="accordion" id="brokerTopicAccordion">
+        <div class="accordion-item">
+          <h2 class="accordion-header" id="headingBrokerTopic">
+            <button class="accordion-button fw-semibold py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseBrokerTopic" aria-expanded="true" aria-controls="collapseBrokerTopic">
+              Broker Settings & Topics
+            </button>
+          </h2>
+          <div id="collapseBrokerTopic" class="accordion-collapse collapse show" aria-labelledby="headingBrokerTopic" data-bs-parent="#brokerTopicAccordion">
+            <div class="accordion-body bg-white rounded shadow-sm p-3">
+              <div class="row g-0">
+
+                <!-- Left: Broker Settings -->
+                <div class="col-md-8 pe-3 border-end">
+                  <div class="row g-3">
+
+                    <!-- Broker Name -->
+                    <div class="col-md-6">
+                      <label class="form-label fw-semibold">Kafka Bootstrap Servers</label>
+                      <input [(ngModel)]="brokerName" [disabled]="running" class="form-control form-control-sm" placeholder="kafkahost:port" />
+                    </div>
+
+                    <!-- AutoOffsetReset -->
+                    <div class="col-md-6">
+                      <label class="form-label fw-semibold">Message Read Offset</label>
+                      <select [(ngModel)]="offset" [disabled]="running" class="form-select form-select-sm">
+                        <option>Latest</option>
+                        <option>Earliest</option>
+                      </select>
+                    </div>
+
+                    <!-- Use Secure Connection -->
+                    <div class="col-md-3">
+                      <div class="form-check">
+                        <input type="checkbox" [(ngModel)]="useSecure" [disabled]="running" id="useSecure" class="form-check-input" />
+                        <label for="useSecure" class="form-check-label fw-semibold">Use Secure Connection</label>
+                      </div>
+                    </div>
+
+                    <!-- SSL / SASL SSL selection -->
+                    <div class="col-md-9" *ngIf="useSecure">
+                      <div class="form-check form-check-inline">
+                        <input type="radio" [(ngModel)]="secureMode" [disabled]="running" value="SSL" id="ssl" class="form-check-input" />
+                        <label for="ssl" class="form-check-label">SSL</label>
+                      </div>
+                      <div class="form-check form-check-inline">
+                        <input type="radio" [(ngModel)]="secureMode" [disabled]="running" value="SASL_SSL" id="saslSsl" class="form-check-input" />
+                        <label for="saslSsl" class="form-check-label">SASL SSL</label>
+                      </div>
+                    </div>
+
+                    <!-- SSL fields -->
+                    <div class="col-md-4" *ngIf="useSecure && secureMode === 'SSL'">
+                      <label class="form-label fw-semibold">Certificate File Path</label>
+                      <div class="input-group input-group-sm">
+                        <input [(ngModel)]="caRootCertificatePath" [disabled]="running" class="form-control" placeholder="Certificate File Path" />
+                        <!-- Hidden file input -->
+                        <input type="file" #file1Input (change)="onFileSelected($event, 0)" hidden />
+                        <button type="button" class="btn btn-outline-secondary" [disabled]="running" (click)="file1Input.click()">Browse</button>
+                      </div>
+                    </div>
+
+                    <div class="col-md-4" *ngIf="useSecure && secureMode === 'SSL'">
+                      <label class="form-label fw-semibold">Pem File Path</label>
+                      <div class="input-group input-group-sm">
+                        <input [(ngModel)]="pemCertificatePath" [disabled]="running" class="form-control" placeholder="PEM File Path" />
+                        <!-- Hidden file input -->
+                        <input type="file" #file2Input (change)="onFileSelected($event, 1)" hidden />
+                        <button type="button" class="btn btn-outline-secondary" [disabled]="running" (click)="file2Input.click()">Browse</button>
+                      </div>
+                    </div>
+                    <div class="col-md-4" *ngIf="useSecure && secureMode === 'SSL'">
+                      <label class="form-label fw-semibold">PEM Key File Path</label>
+                      <div class="input-group input-group-sm">
+                        <input [(ngModel)]="pemKeyCertificatePath" [disabled]="running" class="form-control" placeholder="PEM Key File Path" />
+                        <!-- Hidden file input -->
+                        <input type="file" #file3Input (change)="onFileSelected($event, 2)" hidden />
+                        <button type="button" class="btn btn-outline-secondary" [disabled]="running" (click)="file3Input.click()">Browse</button>
+                      </div>
+                    </div>
+
+                    <!-- SASL SSL fields -->
+                    <div class="col-md-4" *ngIf="useSecure && secureMode === 'SASL_SSL'">
+                      <label class="form-label fw-semibold">User API</label>
+                      <input [(ngModel)]="apiUser" class="form-control form-control-sm" [disabled]="running" placeholder="API user" />
+                    </div>
+                    <div class="col-md-4" *ngIf="useSecure && secureMode === 'SASL_SSL'">
+                      <label class="form-label fw-semibold">User API Secret</label>
+                      <input [(ngModel)]="apiSecret" type="password" [disabled]="running" class="form-control form-control-sm" placeholder="Secret" />
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="col-12 mt-2">
+                      <div class="d-flex gap-2">
+                        <button (click)="listTopics()" class="btn btn-sm btn-outline-primary">📋 List Topics</button>
+                        <button (click)="start()" [disabled]="running" class="btn btn-sm btn-success">▶ Connect</button>
+                        <button (click)="stop()" [disabled]="!running" class="btn btn-sm btn-danger">⏹ Stop</button>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+                <!-- Right: Available Topics -->
+                <div class="col-md-4 ps-3">
+                  <h6 class="fw-semibold mb-2">Available Topics</h6>
+                  <ul class="list-group list-group-flush small flex-grow-1 overflow-auto" style="max-height:45vh;">
+                    <li class="list-group-item py-2"
+                        *ngFor="let topic of topics"
+                        [class.active]="selectedTopics.includes(topic.name)"
+                        (click)="toggleTopic(topic.name)"
+                        style="cursor: pointer;">
+                      {{ topic.name }} <span class="text-warning ms-2">[{{ topic.offset }}]</span>
+                    </li>
+                  </ul>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Messages Section -->
+    <div class="flex-grow-1 d-flex flex-column mb-3">
+      <div class="accordion flex-grow-1" id="messageAccordion">
+        <div class="accordion-item h-100 d-flex flex-column" style="background:#f5f5f5;">
+          <h2 class="accordion-header" id="headingMessages">
+            <button class="accordion-button fw-semibold py-2"
+                    [class.text-warning]="!sessionId"
+                    [class.text-success]="sessionId"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#collapseMessages"
+                    aria-expanded="true"
+                    aria-controls="collapseMessages">
+              {{ sessionId ? 'Connected -&nbsp;' : 'Disconnected' }}
+              <span class="text-primary">
+                {{
+                   sessionId
+                        ? (selectedTopics && selectedTopics.length > 0
+                            ? selectedTopics.join(', ')
+                            : 'All Topics')
+                        : ''
+                }}
+              </span>
+            </button>
+          </h2>
+          <div id="collapseMessages" class="accordion-collapse collapse show flex-grow-1" aria-labelledby="headingMessages" data-bs-parent="#messageAccordion">
+            <div class="accordion-body bg-white rounded shadow-sm p-2 d-flex flex-column h-100">
+
+              <div class="row flex-grow-1">
+
+                <!-- Left side: Messages List -->
+                <div class="col-md-6 d-flex flex-column pe-2 border-end">
+
+                  <!-- Header with search -->
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span><span class="mb-0 fw-semibold">Messages</span><span class="small text-warning">{{ messages.length === MAX_MESSAGE_COUNT?": Display Limit Reached":""}}</span></span>
+                    <input type="text"
+                           class="form-control form-control-sm w-50"
+                           placeholder="🔍 Search messages..."
+                           [(ngModel)]="searchText"
+                           (input)="applyFilter()" />
+                  </div>
+
+                  <!-- Messages List -->
+                  <ul class="list-group list-group-flush small flex-grow-1 overflow-auto">
+                    <li class="list-group-item py-2"
+                        *ngFor="let msg of paginatedMessages"
+                        (click)="selectedMessage = msg"
+                        [class.active]="selectedMessage === msg"
+                        style="cursor:pointer;">
+                      <span class="fw-bold text-primary" [class.text-danger]="selectedMessage === msg">{{ msg.topic }}:</span>
+                      <span class="text-dark ms-2">{{ msg.timestamp | date:'yyyy-MM-dd HH:mm:ss.SSS' }}</span>
+                      <span class="text-warning ms-2">[{{ msg.offset }}]</span>
+                    </li>
+                  </ul>
+
+                  <!-- Pagination Controls -->
+                  <!-- Pagination Controls -->
+                  <div class="d-flex justify-content-between align-items-center mt-2">
+
+                    <!-- Prev Button -->
+                    <button class="btn btn-sm btn-outline-secondary"
+                            (click)="prevPage()"
+                            [disabled]="currentPage === 1">
+                      ⬅ Prev
+                    </button>
+
+                    <!-- Page Info + Dropdowns -->
+                    <div class="d-flex align-items-center gap-2">
+                      <span class="small">Page</span>
+                      <select class="form-select form-select-sm w-auto"
+                              [(ngModel)]="currentPage"
+                              (change)="updatePagination()">
+                        <option *ngFor="let page of pages" [value]="page">{{ page }}</option>
+                      </select>
+                      <span class="small">of {{ totalPages }}</span>
+
+                      <!-- Page Size -->
+                      <select class="form-select form-select-sm w-auto"
+                              [(ngModel)]="pageSize"
+                              (change)="changePageSize()">
+                        <option *ngFor="let size of pageSizes" [value]="size">{{ size }}</option>
+                      </select>
+                    </div>
+
+                    <!-- Next Button -->
+                    <button class="btn btn-sm btn-outline-secondary"
+                            (click)="nextPage()"
+                            [disabled]="currentPage === totalPages">
+                      Next ➡
+                    </button>
+
+                  </div>
+
+                  <!-- Optional counter -->
+                  <div class="text-muted small text-center mt-1">
+                    Showing {{ startIndex }} – {{ endIndex }} of {{ filteredMessages.length }} messages
+                  </div>
+
+                </div>
+
+                <!-- Right side: Payload -->
+                <div class="col-md-6 d-flex flex-column ps-2">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <!--<span><span class="mb-0 fw-semibold">Payload</span>&nbsp;<span class="small text-warning"><input type="text" [(ngModel)]="selectedMessage.topic" /></span></span>-->
+                    <h6 class="mb-0 fw-semibold">Payload</h6>
+                    <button class="btn btn-sm btn-outline-secondary" (click)="copyToClipboard(selectedMessage?.value)">
+                      📋 Copy
+                    </button>
+                  </div>
+                  <div class="flex-grow-1 overflow-auto bg-light p-2 rounded">
+                    <pre class="small m-0" *ngIf="selectedMessage; else noMsg">{{ selectedMessage?.value }}</pre>
+                    <ng-template #noMsg>
+                      <p class="text-muted small">Select a message from the left to view its payload.</p>
+                    </ng-template>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<app-toast></app-toast>

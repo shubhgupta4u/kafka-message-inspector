@@ -37,26 +37,26 @@ namespace KafkaInspector.Server.Managers
                 var metadata = adminClient.GetMetadata(TimeSpan.FromSeconds(10));
 
                 var result = new Dictionary<string, long>();
-
+                long totalLatestOffset = 0;
                 foreach (var topic in metadata.Topics
                                                .Where(t => !string.IsNullOrEmpty(t.Topic) &&
                                                            !InternalKafkaTopics.Contains(t.Topic, StringComparer.OrdinalIgnoreCase)))
                 {
-                    long totalLatestOffset = 0;
-
-                    foreach (var partition in topic.Partitions)
-                    {
-                        try
-                        {
-                            var watermark = consumer.QueryWatermarkOffsets(new TopicPartition(topic.Topic, partition.PartitionId),
-                                                                           TimeSpan.FromSeconds(5));
-                            totalLatestOffset += watermark.High.Value; // latest offset per partition
-                        }
-                        catch (KafkaException ex)
-                        {
-                            Console.WriteLine($"Failed to query offsets for {topic.Topic} [Partition {partition.PartitionId}]: {ex.Message}");
-                        }
-                    }
+                    //long totalLatestOffset = 0;
+                    totalLatestOffset += 1;
+                    //foreach (var partition in topic.Partitions)
+                    //{
+                    //    try
+                    //    {
+                    //        var watermark = consumer.QueryWatermarkOffsets(new TopicPartition(topic.Topic, partition.PartitionId),
+                    //                                                       TimeSpan.FromSeconds(5));
+                    //        totalLatestOffset += watermark.High.Value; // latest offset per partition
+                    //    }
+                    //    catch (KafkaException ex)
+                    //    {
+                    //        Console.WriteLine($"Failed to query offsets for {topic.Topic} [Partition {partition.PartitionId}]: {ex.Message}");
+                    //    }
+                    //}
 
                     result[topic.Topic] = totalLatestOffset;
                 }
@@ -82,9 +82,9 @@ namespace KafkaInspector.Server.Managers
 
             if (!_running.TryAdd(sessionId, cts)) throw new Exception("Could not start session");
 
-            if (topics == null || topics?.Length ==0)
+            if (topics == null || topics?.Length == 0)
             {
-                topics = (await GetTopicsWithOffsetsAsync(kafkaConfiguration))?.Keys.ToArray() ?? new string[0] ;
+                topics = (await GetTopicsWithOffsetsAsync(kafkaConfiguration))?.Keys.ToArray() ?? new string[0];
             }
 
             _ = Task.Run(async () =>
@@ -178,7 +178,7 @@ namespace KafkaInspector.Server.Managers
             return config;
         }
 
-        private ConsumerConfig GetConsumerConfig(KafkaConfiguration kafkaConfiguration, string sessionId, AutoOffsetReset? autoOffsetReset )
+        private ConsumerConfig GetConsumerConfig(KafkaConfiguration kafkaConfiguration, string sessionId, AutoOffsetReset? autoOffsetReset)
         {
             var config = new ConsumerConfig
             {
@@ -186,8 +186,8 @@ namespace KafkaInspector.Server.Managers
                 GroupId = "kafka-inspector-" + sessionId,
                 EnableMetricsPush = true,
                 HeartbeatIntervalMs = 3000,
-                SessionTimeoutMs=20000,
-                EnableAutoCommit=false
+                SessionTimeoutMs = 20000,
+                EnableAutoCommit = false
             };
             if (autoOffsetReset.HasValue)
             {
@@ -195,7 +195,7 @@ namespace KafkaInspector.Server.Managers
             }
             if (kafkaConfiguration != null && kafkaConfiguration.UseSecureKafka)
             {
-                if(kafkaConfiguration.Protocol == SecurityProtocol.Ssl)
+                if (kafkaConfiguration.Protocol == SecurityProtocol.Ssl)
                 {
                     config.ApiVersionRequest = true;
                     config.SecurityProtocol = SecurityProtocol.Ssl;
@@ -213,6 +213,60 @@ namespace KafkaInspector.Server.Managers
                     config.SaslPassword = kafkaConfiguration.KafkaUserApiSecret;
                 }
             }
+            return config;
+        }
+
+        public async Task ProduceMessageAsync(KafkaConfiguration kafkaConfiguration, string topic, string value)
+        {
+            var config = GetProducerConfig(kafkaConfiguration);
+
+            using var producer = new ProducerBuilder<string, string>(config).Build();
+            try
+            {
+                var deliveryResult = await producer.ProduceAsync(
+                    topic,
+                    new Message<string, string>
+                    {
+                        Key = Guid.NewGuid().ToString(),
+                        Value = value
+                    });
+
+                Console.WriteLine($"Delivered '{deliveryResult.Value}' to '{deliveryResult.TopicPartitionOffset}'");
+            }
+            catch (ProduceException<string, string> ex)
+            {
+                Console.WriteLine($"Delivery failed: {ex.Error.Reason}");
+                throw;
+            }
+        }
+
+        private ProducerConfig GetProducerConfig(KafkaConfiguration kafkaConfiguration)
+        {
+            var config = new ProducerConfig
+            {
+                BootstrapServers = kafkaConfiguration?.KafkaBootstrapServers
+            };
+
+            if (kafkaConfiguration != null && kafkaConfiguration.UseSecureKafka)
+            {
+                if (kafkaConfiguration.Protocol == SecurityProtocol.Ssl)
+                {
+                    config.SecurityProtocol = SecurityProtocol.Ssl;
+                    config.SaslMechanism = null;
+                    config.EnableSslCertificateVerification = false;
+                    config.SslCertificateLocation = kafkaConfiguration.KafkaPemFilePath;
+                    config.SslKeyLocation = kafkaConfiguration.KafkaPemKeyFilePath;
+                    config.SslCaLocation = kafkaConfiguration.KafkaCertificateFilePath;
+                }
+                else
+                {
+                    config.SecurityProtocol = SecurityProtocol.SaslSsl;
+                    config.SaslMechanism = SaslMechanism.Plain;
+                    config.SaslUsername = kafkaConfiguration.KafkaUserApi;
+                    config.SaslPassword = kafkaConfiguration.KafkaUserApiSecret;
+                }
+            }
+
             return config;
         }
     }

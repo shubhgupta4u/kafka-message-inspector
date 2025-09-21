@@ -2,6 +2,8 @@ import { Component, OnInit, ViewChild } from '@angular/core';
 import { KafkaService } from '../services/kafka.service';
 import { AutoOffsetReset, SecurityProtocol } from '../models/kafka-connection-settings';
 import { ToastComponent } from './toast/toast.component';
+import { MatDialog } from '@angular/material/dialog';
+import { KafkaMessageDialogComponent } from './kafka-message-dialog/kafka-message-dialog.component';
 
 @Component({
   selector: 'app-root',
@@ -11,8 +13,9 @@ import { ToastComponent } from './toast/toast.component';
 })
 export class AppComponent implements OnInit {
   @ViewChild(ToastComponent) toast!: ToastComponent;
+  isBusy: boolean = false;
   readonly MAX_MESSAGE_COUNT: number = 5000;
-  brokerName = 'localhost:9092';
+  brokerName = 'secured-kafka01.dlas1.ucloud.int:9093,secured-kafka02.dlas1.ucloud.int:9093,secured-kafka03.dlas1.ucloud.int:9093, secured-kafka04.dlas1.ucloud.int:9093, secured-kafka05.dlas1.ucloud.int:9093';
   offset = 'Latest';
   messages: any[] = [];
   topics: any[] = [];
@@ -21,11 +24,11 @@ export class AppComponent implements OnInit {
   selectedMessage: any = null;
   sessionId: string | null = null;
 
-  useSecure: boolean = false;
+  useSecure: boolean = true;
   secureMode: string = "SSL";
-  caRootCertificatePath: string | null = null;
-  pemCertificatePath: string | null = null;
-  pemKeyCertificatePath: string | null = null;
+  caRootCertificatePath: string | null = "caroot.cer";
+  pemCertificatePath: string | null = "kafka.pem";
+  pemKeyCertificatePath: string | null = "kafka-key.pem";
   selectedFile: File | null = null;
   apiUser: string | null = null;
   apiSecret: string | null = null;
@@ -39,12 +42,31 @@ export class AppComponent implements OnInit {
   pageSizes: number[] = [5, 10, 20, 50, 100];
   totalPages: number = 1;
   pages: number[] = [];
-  constructor(private kafkaService: KafkaService) { 
+  constructor(private kafkaService: KafkaService, private dialog: MatDialog) { 
+  }
+
+  openKafkaDialog(): void {
+    this.isBusy = true;
+    if (this.selectedTopics?.length > 0) {
+      const dialogRef = this.dialog.open(KafkaMessageDialogComponent, {
+        width: '600px',
+        data: { title: `Publish Message to '${this.selectedTopics[0]}' topic` },
+      });
+
+      dialogRef.afterClosed().subscribe((result: string) => {
+        this.isBusy = false;
+        if (result) {
+          this.sendMessage(result);
+        }
+      });
+    }
   }
 
   async start() {
     try {
+      this.isBusy = true;
       this.messages = [];
+      this.applyFilter();
       await this.kafkaService.startConsumer({
         bootstrapServers: this.brokerName,
         topics: this.selectedTopics,
@@ -58,18 +80,50 @@ export class AppComponent implements OnInit {
         certificateFilePath: this.caRootCertificatePath ?? "",
       });
       this.running = true;
+      this.isBusy = false;
     } catch (error:any) {
       console.error('Error fetching topics', error);
       this.toast.show(error.message, 'danger');
+      this.isBusy = false;
+    }
+  }
+
+  async sendMessage(payload: string) {
+    try {
+      this.isBusy = true;
+      if (this.selectedTopics?.length > 0) {
+        await this.kafkaService.produceKafkaMessage({
+          bootstrapServers: this.brokerName,
+          topic: this.selectedTopics[0],
+          message: payload,
+          useSecureKafka: this.useSecure,
+          securityProtocol: this.secureMode == "SSL" ? SecurityProtocol.Ssl : SecurityProtocol.SaslSsl,
+          userApi: this.apiUser ?? "",
+          userApiSecret: this.apiSecret ?? "",
+          pemFilePath: this.pemCertificatePath ?? "",
+          pemKeyFilePath: this.pemKeyCertificatePath ?? "",
+          certificateFilePath: this.caRootCertificatePath ?? "",
+        });
+      }
+      this.isBusy = false;
+      this.toast.show("Message Sent", 'success');
+    } catch (error: any) {
+      console.error('Error fetching topics', error);
+      this.toast.show(error.message, 'danger');
+      this.isBusy = false;
     }
   }
 
   async stop() {
+    this.isBusy = true;
     await this.kafkaService.stopConsumer();
     this.running = false;
+    this.isBusy = false;
   }
 
   async toggleTopic(topic: string) {
+    if (this.sessionId)
+      return;
     if (this.selectedTopics.includes(topic)) {
       // remove if already selected
       this.selectedTopics = this.selectedTopics.filter(t => t !== topic);
@@ -79,8 +133,38 @@ export class AppComponent implements OnInit {
     }
   }
 
+  get formattedMessage(): string {
+    try {
+      return JSON.stringify(JSON.parse(this.selectedMessage?.value ?? '{}'), null, 2);
+    } catch {
+      return this.selectedMessage?.value ?? '';
+    }
+  }
+
+  // Check if all topics are selected
+  areAllSelected(): boolean {
+    return this.topics.length > 0 && this.selectedTopics.length === this.topics.length;
+  }
+
+  isOneTopicSelected(): boolean {
+    return this.topics.length > 0 && this.selectedTopics.length === 1;
+  }
+
+  // Toggle Select All
+  toggleSelectAll(event: Event): void {
+    if (this.sessionId)
+      return;
+    const checked = (event.target as HTMLInputElement).checked;
+    if (checked) {
+      this.selectedTopics = this.topics.map(t => t.name); // select all
+    } else {
+      this.selectedTopics = []; // clear selection
+    }
+  }
+
   async listTopics() {
     try {
+      this.isBusy = true;
       const res: any = await this.kafkaService.getTopics({
         bootstrapServers: this.brokerName,
         useSecureKafka: this.useSecure,
@@ -96,10 +180,12 @@ export class AppComponent implements OnInit {
         name,
         offset
       }));
+      this.isBusy = false;
     } catch (error:any) {
       console.error('Error listing topics', error);
       this.topics = [];
       this.toast.show(error.message, 'danger');
+      this.isBusy = false;
     }
   }
 

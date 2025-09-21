@@ -3,7 +3,7 @@ import * as signalR from '@microsoft/signalr';
 import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, interval, Observable, Subscription } from 'rxjs';
 import { environment } from '../environments/environment';
-import { KafkaStartRequest, KafkaTopicRequest } from '../models/kafka-connection-settings';
+import { KafkaMessageSendRequest, KafkaStartRequest, KafkaTopicRequest } from '../models/kafka-connection-settings';
 import { KafkaConnectionValidationFailure } from '../models/KafkaConnectionValidationFailure';
 
 @Injectable({ providedIn: 'root' })
@@ -51,6 +51,14 @@ export class KafkaService {
     } catch (error: any) {
       this.handleError(error);
     }    
+  }
+
+  async produceKafkaMessage(kafkaMessageSendRequest: KafkaMessageSendRequest) {
+    try {
+      await this.http.post(`${this.baseUrl}/api/kafka/send`, kafkaMessageSendRequest).toPromise();
+    } catch (error: any) {
+      this.handleError(error);
+    }
   }
 
   async stopConsumer() {

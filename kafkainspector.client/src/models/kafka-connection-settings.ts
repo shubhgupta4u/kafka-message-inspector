@@ -25,3 +25,8 @@ export interface KafkaStartRequest extends KafkaTopicRequest {
   autoOffsetReset: AutoOffsetReset;
 }
 
+export interface KafkaMessageSendRequest extends KafkaTopicRequest {
+  topic: string;
+  message: string;
+}
+
